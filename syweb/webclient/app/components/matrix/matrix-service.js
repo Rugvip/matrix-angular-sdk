@@ -199,8 +199,8 @@ function($http, $window, $timeout, $q) {
             });
         }, retryAfterMs);
     };
-    
-    var doRegisterLogin = function(path, loginType, sessionId, userName, password, threepidCreds) {
+
+    var doRegisterLogin = function(path, loginType, sessionId, userName, password, threepidCreds, mac) {
         var data = {};
         if (loginType === "m.login.recaptcha") {
             var challengeToken = Recaptcha.get_challenge();
@@ -222,7 +222,14 @@ function($http, $window, $timeout, $q) {
                 password: password
             };
         }
-        
+        else if (loginType === "org.matrix.login.shared_secret") {
+            data = {
+                user: userName,
+                password: password,
+                mac: mac
+            };
+        }
+
         if (sessionId) {
             data.session = sessionId;
         }
@@ -244,7 +251,7 @@ function($http, $window, $timeout, $q) {
         },
 
         // Register an user
-        register: function(user_name, password, threepidCreds, useCaptcha) {
+        register: function(user_name, password, threepidCreds, useCaptcha, mac) {
             // registration is composed of multiple requests, to check you can
             // register, then to actually register. This deferred will fire when
             // all the requests are done, along with the final response.
@@ -259,7 +266,8 @@ function($http, $window, $timeout, $q) {
                     var knownTypes = [
                         "m.login.password",
                         "m.login.recaptcha",
-                        "m.login.email.identity"
+                        "m.login.email.identity",
+                        "org.matrix.login.shared_secret",
                     ];
                     // if they entered 3pid creds, we want to use a flow which uses it.
                     var useThreePidFlow = threepidCreds != undefined;
@@ -305,7 +313,12 @@ function($http, $window, $timeout, $q) {
                     console.log("Using flow " + JSON.stringify(flows[flowIndex]));
                     firstRegType = flows[flowIndex].type;
                     var sessionId = undefined;
-                    
+
+                    if (firstRegType === "m.login.password" && mac) {
+                        firstRegType = "org.matrix.login.shared_secret";
+                        console.log("Using flow org.matrix.login.shared_secret instead of m.login.password");
+                    }
+
                     // generic response processor so it can loop as many times as required
                     var loginResponseFunc = function(response) {
                         if (response.data.session) {
@@ -342,7 +355,7 @@ function($http, $window, $timeout, $q) {
                     };
                     
                     // set the ball rolling
-                    doRegisterLogin(path, firstRegType, undefined, user_name, password, threepidCreds).then(
+                    doRegisterLogin(path, firstRegType, undefined, user_name, password, threepidCreds, mac).then(
                         loginResponseFunc,
                         function(err) {
                             deferred.reject(err);
